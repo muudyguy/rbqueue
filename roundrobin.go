@@ -21,22 +21,17 @@ type RoundRobinQueue struct {
 	priorityMapMutex			sync.Mutex
 }
 
-//todo disgusting method, change
-func (selfPtr *RoundRobinQueue) init() {
-
-	if selfPtr.currentlyProcessedGroupName == "" {
-		if len(selfPtr.rotatingGroupQueue) > 0 {
-			selfPtr.currentlyProcessedGroupName = selfPtr.rotatingGroupQueue[0]
-		}
+func NewRoundRobinQueue() *RoundRobinQueue {
+	rrq := RoundRobinQueue{}
+	if len(rrq.rotatingGroupQueue) > 0 {
+		rrq.currentlyProcessedGroupName = rrq.rotatingGroupQueue[0]
 	}
 
-	if selfPtr.groupMessageBoxMap == nil {
-		selfPtr.groupMessageBoxMap = make(map[string][]interface{})
-	}
+	rrq.groupMessageBoxMap = make(map[string][]interface{})
 
-	if selfPtr.priorityMap == nil {
-		selfPtr.priorityMap = make(map[string]int)
-	}
+	rrq.priorityMap = make(map[string]int)
+
+	return &rrq
 }
 
 func (selfPtr *RoundRobinQueue) checkIfGroupExists(group string) {
@@ -61,8 +56,6 @@ func (selfPtr *RoundRobinQueue) Enlist(group string, item interface{}) {
 		panic(fmt.Errorf("There are no priorities set within the map !"))
 	}
 	selfPtr.priorityMapMutex.Unlock()
-
-	selfPtr.init()
 
 	groupMessageBox := selfPtr.groupMessageBoxMap[group]
 
@@ -178,8 +171,6 @@ func (selfPtr *RoundRobinQueue) GetOne() (interface{}, bool) {
 	}
 	selfPtr.priorityMapMutex.Unlock()
 
-	selfPtr.init()
-
 	if selfPtr.totalItemCount == 0 {
 		return nil, false
 	} else {
@@ -195,8 +186,6 @@ Set a new group and its priority
 func (selfPtr *RoundRobinQueue) SetGroup(name string, priority int) {
 	selfPtr.setGroupMutex.Lock()
 	defer selfPtr.setGroupMutex.Unlock()
-
-	selfPtr.init()
 
 	selfPtr.priorityMap[name] = priority
 	selfPtr.rotatingGroupQueue = append(selfPtr.rotatingGroupQueue, name)
