@@ -1,6 +1,7 @@
 package queue
 import (
 	"sync"
+	"fmt"
 )
 
 
@@ -17,6 +18,7 @@ type RoundRobinQueue struct {
 	enlistMutex                 sync.Mutex
 	getOneMutex                 sync.Mutex
 	setGroupMutex               sync.Mutex
+	priorityMapMutex			sync.Mutex
 }
 
 //todo disgusting method, change
@@ -43,6 +45,12 @@ Add an item into the queue
 func (selfPtr *RoundRobinQueue) Enlist(group string, item interface{}) {
 	selfPtr.enlistMutex.Lock()
 	defer selfPtr.enlistMutex.Unlock()
+
+	selfPtr.priorityMapMutex.Lock()
+	if len(selfPtr.priorityMap == 0) {
+		panic(fmt.Errorf("There are no priorities set within the map !"))
+	}
+	selfPtr.priorityMapMutex.Unlock()
 
 	selfPtr.init()
 
@@ -148,17 +156,23 @@ func (selfPtr *RoundRobinQueue) resolveNextItemAndReturn() (interface{}, bool) {
 /**
 Get one message from the current group's message box
  */
-func (self *RoundRobinQueue) GetOne() (interface{}, bool) {
-	self.getOneMutex.Lock()
-	defer self.getOneMutex.Unlock()
+func (selfPtr *RoundRobinQueue) GetOne() (interface{}, bool) {
+	selfPtr.getOneMutex.Lock()
+	defer selfPtr.getOneMutex.Unlock()
 
-	self.init()
+	selfPtr.priorityMapMutex.Lock()
+	if len(selfPtr.priorityMap == 0) {
+		panic(fmt.Errorf("There are no priorities set within the map !"))
+	}
+	selfPtr.priorityMapMutex.Unlock()
 
-	if self.totalItemCount == 0 {
+	selfPtr.init()
+
+	if selfPtr.totalItemCount == 0 {
 		return nil, false
 	} else {
-		self.totalItemCount = self.totalItemCount - 1
-		return self.resolveNextItemAndReturn()
+		selfPtr.totalItemCount = selfPtr.totalItemCount - 1
+		return selfPtr.resolveNextItemAndReturn()
 	}
 }
 
