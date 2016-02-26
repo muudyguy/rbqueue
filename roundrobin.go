@@ -39,6 +39,14 @@ func (selfPtr *RoundRobinQueue) init() {
 	}
 }
 
+func (selfPtr *RoundRobinQueue) checkIfGroupExists(group string) {
+	_, found := selfPtr.priorityMap[group]
+	if !found {
+		panic(fmt.Errorf("This group does not exist in the queue priority map !"))
+	}
+
+}
+
 /**
 Add an item into the queue
  */
@@ -46,17 +54,20 @@ func (selfPtr *RoundRobinQueue) Enlist(group string, item interface{}) {
 	selfPtr.enlistMutex.Lock()
 	defer selfPtr.enlistMutex.Unlock()
 
+	selfPtr.checkIfGroupExists(group)
+
 	selfPtr.priorityMapMutex.Lock()
-	if len(selfPtr.priorityMap == 0) {
+	if len(selfPtr.priorityMap) == 0 {
 		panic(fmt.Errorf("There are no priorities set within the map !"))
 	}
 	selfPtr.priorityMapMutex.Unlock()
 
 	selfPtr.init()
 
-	groupSlice := selfPtr.groupMessageBoxMap[group]
-	groupSlice = append(groupSlice, item)
-	selfPtr.groupMessageBoxMap[group] = groupSlice
+	groupMessageBox := selfPtr.groupMessageBoxMap[group]
+
+	groupMessageBox = append(groupMessageBox, item)
+	selfPtr.groupMessageBoxMap[group] = groupMessageBox
 
 	//increase total item count
 	selfPtr.totalItemCount = selfPtr.totalItemCount + 1
@@ -160,8 +171,9 @@ func (selfPtr *RoundRobinQueue) GetOne() (interface{}, bool) {
 	selfPtr.getOneMutex.Lock()
 	defer selfPtr.getOneMutex.Unlock()
 
+
 	selfPtr.priorityMapMutex.Lock()
-	if len(selfPtr.priorityMap == 0) {
+	if len(selfPtr.priorityMap) == 0 {
 		panic(fmt.Errorf("There are no priorities set within the map !"))
 	}
 	selfPtr.priorityMapMutex.Unlock()
@@ -171,8 +183,9 @@ func (selfPtr *RoundRobinQueue) GetOne() (interface{}, bool) {
 	if selfPtr.totalItemCount == 0 {
 		return nil, false
 	} else {
+		item, found := selfPtr.resolveNextItemAndReturn()
 		selfPtr.totalItemCount = selfPtr.totalItemCount - 1
-		return selfPtr.resolveNextItemAndReturn()
+		return item, found
 	}
 }
 
