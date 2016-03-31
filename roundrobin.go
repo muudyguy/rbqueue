@@ -8,6 +8,7 @@ import (
 type RoundRobinQueue struct {
 	Quantum                     int
 	groupMessageBoxMap          map[string][]interface{}
+	defaultBox				    []interface{}
 	priorityMap                 map[string]int
 	rotatingGroupQueue          []string
 	currentQuantumState         int
@@ -16,13 +17,6 @@ type RoundRobinQueue struct {
 	totalItemCount              *int
 
 	globalLock                  *sync.Mutex
-
-	//	rotatingGroupQueueLock           *sync.Mutex
-	//	currentQuantumStateLock          *sync.Mutex
-	//	priorityMapLock                  *sync.Mutex
-	//	totalItemCountLock               *sync.Mutex
-	//	currentlyProcesssedGroupNameLock *sync.Mutex
-	//	groupMessageBoxMapLock           *sync.Mutex
 
 }
 
@@ -34,17 +28,15 @@ func NewRoundRobinQueue() *RoundRobinQueue {
 
 	rrq.groupMessageBoxMap = make(map[string][]interface{})
 
+	rrq.groupMessageBoxMap["rrqabsolute"] = make([]interface{}, 0)
+
 	rrq.priorityMap = make(map[string]int)
 
 	rrq.globalLock = new(sync.Mutex)
 
+	rrq.defaultBox = make([]interface{}, 0)
+
 	rrq.totalItemCount = new(int)
-//	rrq.rotatingGroupQueueLock = new(sync.Mutex)
-//	rrq.currentQuantumStateLock = new(sync.Mutex)
-//	rrq.priorityMapLock = new(sync.Mutex)
-//	rrq.totalItemCountLock = new(sync.Mutex)
-//	rrq.currentlyProcesssedGroupNameLock = new(sync.Mutex)
-//	rrq.groupMessageBoxMapLock = new(sync.Mutex)
 
 	return &rrq
 }
@@ -66,28 +58,46 @@ func (selfPtr *RoundRobinQueue) Enlist(group string, item interface{}) {
 	selfPtr.globalLock.Lock()
 	defer selfPtr.globalLock.Unlock()
 
-	selfPtr.checkIfGroupExists(group)
-
-
 	if len(selfPtr.priorityMap) == 0 {
-		panic(fmt.Errorf("There are no priorities set within the map !"))
+		selfPtr.defaultBox = append(selfPtr.defaultBox, item)
+	} else {
+		selfPtr.checkIfGroupExists(group)
+
+		groupMessageBox := selfPtr.groupMessageBoxMap[group]
+		groupMessageBox = append(groupMessageBox, item)
+		//	fmt.Println("Now the length of message box with group name " + group + "  is : " + strconv.Itoa(len(groupMessageBox)))
+		//	fmt.Println(item)
+		selfPtr.groupMessageBoxMap[group] = groupMessageBox
 	}
-
-	groupMessageBox := selfPtr.groupMessageBoxMap[group]
-	groupMessageBox = append(groupMessageBox, item)
-	selfPtr.groupMessageBoxMap[group] = groupMessageBox
-
 
 	//increase total item count
 	*selfPtr.totalItemCount += 1
 
 }
 
+func (selfPtr *RoundRobinQueue) EnlistAbsolutePriority(item interface{}) {
+	selfPtr.globalLock.Lock()
+	defer selfPtr.globalLock.Unlock()
+
+	fmt.Println("I AM INCREASING")
+
+	//todo This is very low performance obviously, find a way to fix overcopying
+	if len(selfPtr.priorityMap) == 0 {
+		selfPtr.defaultBox = append([]interface{}{item}, selfPtr.defaultBox...)
+		fmt.Println(selfPtr.defaultBox)
+	} else {
+		selfPtr.groupMessageBoxMap["rrqabsolute"] = append(selfPtr.groupMessageBoxMap["rrqabsolute"], item)
+	}
+
+	//increase total item count
+	*selfPtr.totalItemCount += 1
+}
+
 /**
 Rotate the priority slice for the next type of message box process
  */
 func (selfPtr *RoundRobinQueue) rotateQueue() {
-	//todo DO I NEED LOCKIN HERE?
+	//todo DO I NEED LOCKING HERE?
 	//Set up the priority slice for the next get
 	selfPtr.rotatingGroupQueue = takeFirstItemToLast(selfPtr.rotatingGroupQueue)
 }
@@ -167,18 +177,38 @@ func (selfPtr *RoundRobinQueue) GetOne() (interface{}, bool) {
 	selfPtr.globalLock.Lock()
 	defer selfPtr.globalLock.Unlock()
 
-	if len(selfPtr.priorityMap) == 0 {
-		panic(fmt.Errorf("There are no priorities set within the map !"))
-	}
-
-
 	if *selfPtr.totalItemCount == 0 {
+		fmt.Println("HERE")
 		return nil, false
-	} else {
-		item, found := selfPtr.resolveNextItemAndReturn()
-		*selfPtr.totalItemCount -= 1
-		return item, found
 	}
+
+
+
+	//If there is no priority set
+	if len(selfPtr.priorityMap) == 0 {
+		if len(selfPtr.defaultBox) > 0 {
+			item := selfPtr.defaultBox[0]
+			//todo Would crash if default box has only 1 item??
+			selfPtr.defaultBox = selfPtr.defaultBox[1:len(selfPtr.defaultBox)]
+			return item, true
+		} else {
+			fmt.Println("HERE Y")
+			return nil, false
+		}
+	} else {
+		//todo Checking this everytime is very ugly
+		absolutePriorityBox := selfPtr.groupMessageBoxMap["rrqabsolute"]
+		if len(absolutePriorityBox) > 0 {
+			item := absolutePriorityBox[len(absolutePriorityBox) - 1]
+			*selfPtr.totalItemCount -= 1
+			return item, true
+		}
+	}
+
+	item, found := selfPtr.resolveNextItemAndReturn()
+	*selfPtr.totalItemCount -= 1
+	return item, found
+
 }
 
 /**
